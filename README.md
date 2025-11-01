@@ -1,9 +1,9 @@
 # learning and experiments
 
-//- commands, pom, props, basics, h2
-//- setup bare min auth + curl support
-//- model, validation, CRUD, Exception handling
-//- unit for service where logic, integ for DB using testcontainer and tests
+- // commands, pom, props, basics, h2
+- // setup bare min auth + curl support
+- // model, validation, CRUD, Exception handling
+- // unit for service where logic, integ for DB using testcontainer and tests
 - logging and microemeter metric
 - make services 2 in py
 - make common config and discovery (AWS)
