@@ -5,7 +5,7 @@
 - // model, validation, CRUD, Exception handling
 - // unit for service where logic, integ for DB using testcontainer and tests
 - //logging and microemeter metric [issue on CW publish]
-- make services 2 in py
+- // make service 2 in py + docker setup [bit dirty]
 - make common config and discovery (AWS)
 - make common DTO dep
 - setup reprodicible builds
