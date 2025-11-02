@@ -15,7 +15,7 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable()) // for APIs
                 .headers(headers -> headers.frameOptions().disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/**").permitAll()
+                        .requestMatchers("/api/**","/actuator/*").permitAll()
                         .anyRequest().authenticated()
                 )
                 .httpBasic(Customizer.withDefaults()); // username/password popup

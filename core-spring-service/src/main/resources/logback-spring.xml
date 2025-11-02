@@ -1,0 +1,50 @@
+<configuration>
+    <springProperty scope="context" name="CORE_SPRING_SERVICE" source="spring.application.name"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <mdc/>
+                <pattern><pattern>{"level":"%level"}</pattern></pattern>
+                <pattern><pattern>{"logger":"%logger{36}"}</pattern></pattern>
+                <message/>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <appender name="JSON_FILE" class="ch.qos.logback.core.FileAppender">
+        <!-- Path to log file -->
+        <file>logs/app-log.json</file>
+
+        <!-- Truncate (overwrite) the log file every run -->
+        <append>false</append>
+
+<!--        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">-->
+<!--            <fileNamePattern>logs/app-log-%d{yyyy-MM-dd}.json</fileNamePattern>-->
+<!--            <maxHistory>7</maxHistory>-->
+<!--        </rollingPolicy>-->
+
+        <!-- JSON encoder using logstash-logback-encoder -->
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <fieldName>@timestamp</fieldName>
+                </timestamp>
+                <logLevel />
+                <threadName />
+                <loggerName />
+                <message />
+                <mdcFields />
+                <customFields>{"service.name":"core-spring-service","ecs.version":"8.11.0"}</customFields>
+            </providers>
+        </encoder>
+    </appender>
+
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="JSON_FILE"/>
+    </root>
+</configuration>
