@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.UuidGenerator;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -15,11 +16,12 @@ public class UserDetail {
 
     @Id
     @GeneratedValue
-    UUID id = UUID.randomUUID();
+    @UuidGenerator
+    private UUID id;
 
     @NotBlank(message = "Name cannot be empty")
     @Size(min = 2, max = 9, message = "Name must be 2–9 characters long")
-    String name;
+    private String name;
 
 //    no arg constructore is needed for jackson to read payloads
     public UserDetail(){}

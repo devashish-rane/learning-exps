@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.deva</groupId>
-	<artifactId>core-spring-servive</artifactId>
+	<artifactId>core-spring-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>core-spring-servive</name>
+	<name>core-spring-service</name>
 	<description>Demo project for Spring Boot</description>
 	<url/>
 	<licenses>

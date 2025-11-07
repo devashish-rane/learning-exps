@@ -1,30 +1,27 @@
-FROM ubuntu:latest
-LABEL authors="Devashish"
-
-# ---------- BUILD STAGE ----------
+## ---------- BUILD STAGE ----------
 FROM maven:3.9.8-eclipse-temurin-17 AS builder
-WORKDIR ./
+WORKDIR /app
 
 # Copy Maven descriptor first for layer caching
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN mvn -q -e dependency:go-offline -B
 
 # Copy source code
 COPY src ./src
 
 # Build application (skip tests to speed up build)
-RUN mvn clean package -DskipTests
+RUN mvn -q -e clean package -DskipTests
 
-# ---------- RUNTIME STAGE ----------
+## ---------- RUNTIME STAGE ----------
 FROM eclipse-temurin:17-jre-jammy
-WORKDIR ./
+WORKDIR /app
 
 # Copy JAR from builder
-COPY --from=builder /target/*.jar app.jar
+COPY --from=builder /app/target/*.jar /app/app.jar
 
 EXPOSE 8080
 
 ENV SPRING_PROFILES_ACTIVE=dev
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

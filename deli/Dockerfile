@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-WORKDIR ./
+WORKDIR /app
 
 # Copy requirements first (for caching)
 COPY requirements.txt .
@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy rest of the code
 COPY . .
 
-EXPOSE 8080
+EXPOSE 8081
 CMD ["python", "main.py"]

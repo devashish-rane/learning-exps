@@ -20,6 +20,8 @@ services:
     build:
       context: ./deli
     container_name: worker
+    ports:
+      - "8081:8081"
     environment:
       DB_HOST: db
       DB_USER: core_user
