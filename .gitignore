@@ -20,4 +20,4 @@ core-spring-service/logs/
 core-spring-service/data/
 
 # Env
-.env
+core-spring-service/.env
