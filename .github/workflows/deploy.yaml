@@ -44,5 +44,5 @@ jobs:
 
       - name: Tag and push image to ECR
         run: |
-          docker tag core-spring-service:${SHA} ${{ steps.login-ecr.outputs.registry }}/core-spring-service-up:${SHA}
+          docker tag core-spring-service:latest ${{ steps.login-ecr.outputs.registry }}/core-spring-service-up:${SHA}
           docker push ${{ steps.login-ecr.outputs.registry }}/core-spring-service-up:${SHA}
