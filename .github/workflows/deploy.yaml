@@ -16,6 +16,8 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: maven
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/pom.xml
 
       - name: Build Spring Boot JAR
         working-directory: ./core-spring-service
