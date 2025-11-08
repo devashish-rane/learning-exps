@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Compose Log Viewer</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+    <div>
+        <h1>Compose Log Viewer</h1>
+        <p>Git root: <code>{{ git_root }}</code></p>
+        <p>Compose files:
+            {% if compose_files %}
+                {% for file in compose_files %}<code>{{ file }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+            {% else %}None found{% endif %}
+        </p>
+    </div>
+    <div class="actions">
+        <button id="refresh">Refresh Containers</button>
+    </div>
+</header>
+
+<main>
+    <aside>
+        <div class="aside-header">
+            <h2>Services</h2>
+            <div class="sidebar-controls">
+                <p>Parsed from compose</p>
+                <button id="restart-btn" disabled>Restart</button>
+            </div>
+        </div>
+        <ul id="service-list"></ul>
+    </aside>
+    <section class="logs">
+        <section class="details-panel">
+            <div class="insights-header">
+                <h3>Insights</h3>
+                <button id="toggle-insights" type="button">Hide</button>
+            </div>
+            <div id="insights-content" class="collapsed">
+                <div class="topology-bar" id="topology-bar">
+                    <p>Loading topology…</p>
+                </div>
+                <div class="details-grid">
+                    <div class="details-card" id="stats-card">
+                        <p>Select a service to view CPU / memory stats.</p>
+                    </div>
+                    <div class="details-card" id="ports-card">
+                        <h4>Ports</h4>
+                        <p><em>Awaiting selection...</em></p>
+                    </div>
+                    <div class="details-card" id="networks-card">
+                        <h4>Networks</h4>
+                        <p><em>Awaiting selection...</em></p>
+                    </div>
+                    <div class="details-card" id="compose-card">
+                        <h4>Compose</h4>
+                        <p><em>Awaiting selection...</em></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <div class="toolbar">
+            <div>
+                <h2 id="selected-title">Select a container</h2>
+                <p class="toolbar-subtitle" id="tail-hint">Live tail</p>
+            </div>
+        </div>
+        <div class="log-wrapper">
+            <pre id="log-output"></pre>
+        </div>
+    </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

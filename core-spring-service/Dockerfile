@@ -22,6 +22,6 @@ COPY --from=builder /app/target/*.jar /app/app.jar
 EXPOSE 8080
 
 ENV SPRING_PROFILES_ACTIVE=dev
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Dspring.output.ansi.enabled=ALWAYS -Dlogback.stdoutImmediateFlush=true"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
