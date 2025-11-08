@@ -58,14 +58,3 @@ reset:
 	docker compose down -v --remove-orphans
 	docker image prune -f
 	docker volume prune -f
-
-# ---------- INFRA ----------
-.PHONY: infra-up infra-down infra-regression
-infra-up:
-        @./infra/scripts/stack.sh up
-
-infra-down:
-        @./infra/scripts/stack.sh down
-
-infra-regression:
-        @./infra/scripts/stack.sh regression
