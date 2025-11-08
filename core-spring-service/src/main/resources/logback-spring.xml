@@ -2,6 +2,10 @@
     <springProperty scope="context" name="CORE_SPRING_SERVICE" source="spring.application.name"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+       <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <!-- file logs everything from DEBUG -->
+            <level>ERROR</level>
+        </filter>
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
                 <timestamp/>
@@ -15,6 +19,10 @@
     </appender>
 
     <appender name="JSON_FILE" class="ch.qos.logback.core.FileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <!-- file logs everything from DEBUG -->
+            <level>DEBUG</level>
+        </filter>
         <!-- Path to log file -->
         <file>logs/app-log.json</file>
 

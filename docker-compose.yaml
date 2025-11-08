@@ -34,20 +34,6 @@ services:
     networks:
       - app-net
 
-#  db:
-#    image: postgres:15-alpine
-#    container_name: db
-#    environment:
-#      POSTGRES_DB: core
-#      POSTGRES_USER: core_user
-#      POSTGRES_PASSWORD: core_pass
-#    ports:
-#      - "5432:5432"
-#    volumes:
-#      - postgres_data:/var/lib/postgresql/data
-#    networks:
-#      - app-net
-
 networks:
   app-net:
 
