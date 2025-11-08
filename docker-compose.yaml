@@ -1,41 +1,50 @@
+version: "3.9"
+
 services:
-  backend:
+  core-service:
     build:
       context: ./core-spring-service
-    container_name: backend
+    container_name: core-service
     env_file:
       - ./.env
-    ports:
-      - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: dev
-      DB_HOST: db
-      DB_USER: core_user
-      DB_PASS: core_pass
-      DB_NAME: core
-#    depends_on:
-#      - db
+      CORE_PORT: ${CORE_PORT:-8080}
+      PRODUCER_SERVICE_URL: ${PRODUCER_SERVICE_URL:-http://producer-service:8082}
+    ports:
+      - "${CORE_PORT:-8080}:8080"
+    depends_on:
+      - producer-service
     networks:
       - app-net
 
-  worker:
+  producer-service:
     build:
-      context: ./deli
-    container_name: worker
-    ports:
-      - "8081:8081"
+      context: ./producer-service
+    container_name: producer-service
+    env_file:
+      - ./.env
     environment:
-      DB_HOST: db
-      DB_USER: core_user
-      DB_PASS: core_pass
-      DB_NAME: core
-#    depends_on:
-#      - db
+      PRODUCER_PORT: ${PRODUCER_PORT:-8082}
+    ports:
+      - "${PRODUCER_PORT:-8082}:8082"
+    networks:
+      - app-net
+
+  ui:
+    build:
+      context: ./ui
+    container_name: ui
+    env_file:
+      - ./.env
+    environment:
+      PORT: ${UI_PORT:-3000}
+      # VITE_CORE_URL: ${CORE_SERVICE_URL:-http://core-service:8080}
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      - core-service
     networks:
       - app-net
 
 networks:
   app-net:
-
-volumes:
-  postgres_data:

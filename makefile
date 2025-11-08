@@ -1,60 +1,44 @@
-APP_NAME := core-spring
-PY_SERVICE := deli
-PROFILE ?= dev
-TAG := latest
+CORE_PORT ?= 8080
+PRODUCER_PORT ?= 8082
+UI_PORT ?= 3000
+DEFAULT_SERVICE ?= core-service
 
-# ---------- BUILD ----------
-.PHONY: build
-build:
-	@echo "🐳 Building all services..."
-	docker compose build
+.PHONY: up down build rebuild logs ps clean test reset
 
-# ---------- RUN ----------
-.PHONY: run
-run:
-	@echo "🚀 Starting all containers..."
+up:
+	@echo "🚀 Starting UI -> Core -> Producer chain..."
 	docker compose up -d
 
-.PHONY: logs
-logs:
-	@echo "📜 Tailing backend logs..."
-	docker compose logs -f backend
+build:
+	@echo "🛠️ Building all images"
+	docker compose build
 
-# ---------- STOP / CLEAN ----------
-.PHONY: stop
-stop:
-	docker compose down
-
-.PHONY: clean
-clean:
-	docker compose down -v --remove-orphans
-	docker system prune -f
-
-# ---------- REBUILD ----------
-.PHONY: rebuild
 rebuild:
+	@echo "🔁 Rebuilding images without cache"
 	docker compose build --no-cache
 	docker compose up -d --force-recreate
 
-# ---------- INDIVIDUAL ----------
-.PHONY: backend worker db
-backend:
-	docker compose up -d backend
+logs:
+	@echo "📜 Tailing logs for $(SERVICE) (set SERVICE=name to override)"
+	docker compose logs -f $(if $(SERVICE),$(SERVICE),$(DEFAULT_SERVICE))
 
-worker:
-	docker compose up -d worker
-
-db:
-	docker compose up -d db
-
-# ---------- UTILITIES ----------
-.PHONY: ps
 ps:
 	docker compose ps
 
-.PHONY: reset
-reset:
-	@echo "💣 Full cleanup (containers, volumes, images)..."
+down:
+	@echo "🛑 Stopping all services"
+	docker compose down
+
+clean:
+	@echo "🧹 Removing containers, volumes, and dangling resources"
 	docker compose down -v --remove-orphans
-	docker image prune -f
-	docker volume prune -f
+	docker system prune -f
+
+reset: clean
+
+# Simple integration test: waits briefly, hits Core which in turn calls Producer
+ test:
+	@echo "🧪 Running UI/Core/Producer smoke test"
+	sleep 3
+	@curl -sf -H "X-Correlation-Id: make-test" "http://localhost:${CORE_PORT}/api/user/demo" | jq '.' 2>/dev/null || curl -sf -H "X-Correlation-Id: make-test" "http://localhost:${CORE_PORT}/api/user/demo"
+	@echo "✅ Core responded"

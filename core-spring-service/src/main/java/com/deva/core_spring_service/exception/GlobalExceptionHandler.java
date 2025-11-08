@@ -2,6 +2,7 @@ package com.deva.core_spring_service.exception;
 
 import com.deva.core_spring_service.model.ApiError;
 import com.deva.core_spring_service.model.FieldErr;
+import com.deva.core_spring_service.exception.ProducerUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -40,13 +41,18 @@ public class GlobalExceptionHandler {
         return build(req, HttpStatus.CONFLICT, "Conflicting resource state", null);
     }
 
+    @ExceptionHandler(ProducerUnavailableException.class)
+    public ResponseEntity<ApiError> producerDown(ProducerUnavailableException ex, HttpServletRequest req) {
+        return build(req, HttpStatus.SERVICE_UNAVAILABLE, "Producer Unavailable", null);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> fallback(Exception ex, HttpServletRequest req) {
         return build(req, HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", null);
     }
 
     private ResponseEntity<ApiError> build(HttpServletRequest req, HttpStatus status, String msg, List<FieldErr> details) {
-        String traceId = MDC.get("traceId"); // If you wire tracing later, this will auto-populate
+        String traceId = MDC.get("correlationId");
         ApiError body = new ApiError(
                 Instant.now(), traceId, status.value(), status.getReasonPhrase(), msg, details, req.getRequestURI());
         return ResponseEntity.status(status).body(body);

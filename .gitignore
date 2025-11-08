@@ -11,6 +11,14 @@ venv/
 
 # Java / Maven
 target/
+producer-service/target/
+core-spring-service/target/
+infra/cdk/target/
+cdk.out/
+
+# Node / React
+ui/node_modules/
+ui/dist/
 
 # Logs and local data
 logs/
