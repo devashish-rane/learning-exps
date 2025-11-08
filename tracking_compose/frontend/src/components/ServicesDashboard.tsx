@@ -8,11 +8,8 @@ import React, {
 } from "react";
 
 /**
- * Representation of a service row returned by the tracking compose backend.
- *
- * Only the fields that are consumed by the dashboard are modeled here so the UI remains decoupled
- * from backend implementation details. Additional properties can be layered in without touching the
- * selection logic introduced in this file as long as the `name` field stays unique.
+ * Minimal shape returned by the services endpoint. The dashboard intentionally keeps the interface
+ * slim to decouple rendering from backend changes while still exposing enough data for operators.
  */
 export interface ServiceRow {
   name: string;
@@ -26,67 +23,24 @@ type ServiceAction = "start" | "stop" | "restart";
 type SelectedMap = Record<string, boolean>;
 
 /**
- * Normalize any thrown value into a human readable error message.
+ * Render a checkable dashboard with bulk orchestration affordances for Compose services.
  *
- * When we bubble errors back into the UI we strongly prefer predictable strings; otherwise React may
- * render `[object Object]` or similar placeholders that do not help when triaging production issues.
- */
-function extractErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  return "Unexpected error while contacting the orchestration API.";
-}
-
-/**
- * Safely attempt to parse a JSON response body.
- *
- * Some endpoints respond with plain text or an empty body when errors bubble from reverse proxies.
- * Rather than throwing secondary parsing errors we fallback to an empty object so the caller can
- * decide how to surface the failure.
- */
-async function tryParseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch (error) {
-    if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
-      console.debug("Failed to parse JSON response body", error);
-    }
-    return {};
-  }
-}
-
-/**
- * ServicesDashboard renders the list of docker-compose managed services alongside action controls.
- *
- * The dashboard now owns bulk selection state, driven by a header-level checkbox whose checked and
- * indeterminate states are derived from the existing selection map. The wiring allows operators to
- * select the full inventory quickly, while ensuring we do not accidentally clear selections after
- * API errors (to make retries painless).
+ * The original implementation lived exclusively on the row-level checkboxes. This rewrite keeps the
+ * previous behaviour intact while layering a header-level select-all checkbox whose visual state is
+ * derived from the existing `selected` map. Keeping the toggle entirely state-driven avoids the
+ * brittle imperative bookkeeping that tends to break during refactors or rendering glitches.
  */
 const ServicesDashboard: React.FC = () => {
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<SelectedMap>({});
   const [busyAction, setBusyAction] = useState<ServiceAction | null>(null);
+  const [selected, setSelected] = useState<SelectedMap>({});
 
   const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
 
-  /**
-   * Track only the identifiers of services that can be selected. When the backend response changes,
-   * `selectableNames` will refresh and downstream memoized values automatically recompute.
-   */
   const selectableNames = useMemo(() => services.map((service) => service.name), [services]);
-
-  /**
-   * The list of currently selected service names. We keep the result memoized to avoid re-computing
-   * within render loops and to ensure stable references in dependency arrays.
-   */
   const selectedNames = useMemo(
     () => selectableNames.filter((name) => Boolean(selected[name])),
     [selectableNames, selected]
@@ -94,17 +48,13 @@ const ServicesDashboard: React.FC = () => {
 
   const selectedCount = selectedNames.length;
   const selectableCount = selectableNames.length;
-
   const allSelected = selectableCount > 0 && selectedCount === selectableCount;
   const isIndeterminate = selectedCount > 0 && !allSelected;
-  const headerAriaChecked = isIndeterminate ? "mixed" : allSelected ? "true" : "false";
 
   /**
-   * Sync the native `indeterminate` state of the header checkbox whenever the memoized flag changes.
-   *
-   * React does not treat `indeterminate` as a controllable prop, so we toggle it directly on the DOM
-   * node. Forgetting this hook would cause browsers to render stale visual states, which is a subtle
-   * failure that operators would only notice after bulk commands are executed.
+   * React does not manage the `indeterminate` property on checkboxes, therefore we adjust it manually
+   * whenever the aggregate state changes. Forgetting to do so leads to stale UI once rows disappear
+   * after refreshes – a production bug that is notoriously confusing during incident response.
    */
   useEffect(() => {
     if (headerCheckboxRef.current) {
@@ -113,11 +63,8 @@ const ServicesDashboard: React.FC = () => {
   }, [isIndeterminate]);
 
   /**
-   * Prune selections that no longer exist after a refresh.
-   *
-   * Without this guard the header checkbox could remain indeterminate if the backend removes a row
-   * (for example, when a service definition is renamed). We only update state when a difference is
-   * detected to prevent unnecessary renders.
+   * When a service disappears (e.g. rename, compose file edit) we prune it from the selection map so
+   * the header checkbox visual state stays accurate and we do not attempt actions against ghosts.
    */
   useEffect(() => {
     setSelected((previous) => {
@@ -127,261 +74,264 @@ const ServicesDashboard: React.FC = () => {
           next[name] = true;
         }
       }
-
-      const previousKeys = Object.keys(previous).filter((key) => previous[key]);
+      const previousKeys = Object.keys(previous).filter((name) => previous[name]);
       const nextKeys = Object.keys(next);
-      if (previousKeys.length === nextKeys.length && previousKeys.every((key) => next[key])) {
+      if (previousKeys.length === nextKeys.length && previousKeys.every((name) => next[name])) {
         return previous;
       }
       return next;
     });
   }, [selectableNames]);
 
-  /**
-   * Fetch the latest service inventory.
-   *
-   * The helper accepts an optional AbortSignal so we can safely cancel the request when the component
-   * unmounts. That avoids noisy React warnings about state updates on unmounted components during
-   * deployments where hot reloads are frequent.
-   */
-  const refreshServices = useCallback(
-    async (signal?: AbortSignal) => {
-      if (signal?.aborted) {
-        return;
+  const refreshServices = useCallback(async () => {
+    // A dedicated loader function keeps the happy-path terse while making it trivial to audit what
+    // happens when fetch fails in production – every exit path updates both the spinner and error UI.
+    setLoading(true);
+    setLoadError(null);
+
+    try {
+      const response = await fetch("/api/services");
+      if (!response.ok) {
+        throw new Error(`Unable to load services (HTTP ${response.status}).`);
       }
 
-      setLoading(true);
-      setLoadError(null);
-
-      try {
-        const response = await fetch("/api/services", { signal });
-        if (!response.ok) {
-          throw new Error(`Unable to load services (HTTP ${response.status}).`);
-        }
-
-        const payload = (await tryParseJson(response)) as ServiceRow[];
-        if (!Array.isArray(payload)) {
-          throw new Error("Received malformed service inventory from the API.");
-        }
-
-        if (!signal?.aborted) {
-          setServices(payload);
-        }
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") {
-          return;
-        }
-        setLoadError(extractErrorMessage(error));
-      } finally {
-        if (!signal?.aborted) {
-          setLoading(false);
-        }
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) {
+        throw new Error("Received unexpected payload from services API.");
       }
-    },
-    []
-  );
+
+      const normalized = payload.filter((item): item is ServiceRow => {
+        return Boolean(item && typeof item === "object" && "name" in item && "status" in item);
+      });
+      setServices(normalized);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unexpected error loading services.";
+      setLoadError(message);
+      setServices([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void refreshServices(controller.signal);
-
-    return () => {
-      controller.abort();
-    };
+    void refreshServices();
   }, [refreshServices]);
 
-  /**
-   * Toggle an individual selection.
-   */
-  const toggleSelection = useCallback((name: string) => {
+  const toggleService = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = event.target;
+    setSelected((previous) => ({ ...previous, [name]: checked }));
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    // We compute the new state from the callback argument to avoid relying on any potentially stale
+    // closure state. React batches updates aggressively in concurrent mode and without this guard the
+    // select-all checkbox can desynchronise during rapid refresh cycles.
     setSelected((previous) => {
-      const next = { ...previous };
-      if (next[name]) {
-        delete next[name];
-      } else {
+      const previouslySelected = selectableNames.filter((name) => Boolean(previous[name]));
+      const shouldSelectAll = previouslySelected.length !== selectableNames.length;
+
+      if (!shouldSelectAll) {
+        return {};
+      }
+
+      const next: SelectedMap = {};
+      for (const name of selectableNames) {
         next[name] = true;
       }
       return next;
     });
-  }, []);
+  }, [selectableNames]);
 
-  /**
-   * Toggle the header checkbox.
-   *
-   * We recompute the desired bulk state from the current selection instead of trusting the event
-   * target. This avoids edge cases where React may coalesce events and leave us with an outdated DOM
-   * value (observed sporadically in integration tests when rapid toggles occur).
-   */
-  const toggleAll = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      event.preventDefault();
-      setSelected((previous) => {
-        const everySelected = selectableNames.every((name) => Boolean(previous[name]));
-        if (everySelected) {
-          return {};
-        }
-        const updated: SelectedMap = {};
-        for (const name of selectableNames) {
-          updated[name] = true;
-        }
-        return updated;
-      });
+  const servicesForAction = useCallback(
+    (target?: string): string[] => {
+      if (target) {
+        return [target];
+      }
+      // Bulk commands reuse the memoised selection list so we always operate on the latest snapshot.
+      return selectedNames.length > 0 ? selectedNames : [];
     },
-    [selectableNames]
+    [selectedNames]
   );
 
   /**
-   * Execute an action against either the current selection or an explicit list of targets.
+   * Fire orchestration commands against the compose backend.
    *
-   * The logic keeps the header checkbox in sync by clearing bulk selections only after a successful
-   * response. When a request fails we surface the error and preserve the chosen services so the user
-   * can immediately retry without re-selecting rows.
+   * We intentionally reset the bulk selection only after the POST call succeeds so retries after
+   * transient failures (Docker daemon restarts, compose contention, networking blips) remain a single
+   * click. Row-level actions prune just the affected service to keep the select-all checkbox honest.
    */
   const runAction = useCallback(
-    async (action: ServiceAction, explicitTargets?: string[]) => {
-      const usedBulkSelection = explicitTargets === undefined;
-      const targets = explicitTargets ?? selectedNames;
-      if (targets.length === 0) {
+    async (action: ServiceAction, target?: string) => {
+      const servicesToAffect = servicesForAction(target);
+      if (servicesToAffect.length === 0) {
+        setActionError("Select at least one service before running a bulk action.");
         return;
       }
 
-      setBusyAction(action);
       setActionError(null);
+      setBusyAction(action);
 
       try {
         const response = await fetch(`/api/services/actions/${action}`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ services: targets }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ services: servicesToAffect }),
         });
 
         if (!response.ok) {
-          const errorBody = await tryParseJson(response);
-          const detail =
-            typeof errorBody === "object" &&
-            errorBody !== null &&
-            "detail" in errorBody &&
-            typeof (errorBody as { detail?: unknown }).detail === "string"
-              ? `: ${(errorBody as { detail: string }).detail}`
-              : "";
-          throw new Error(`Action ${action} failed${detail}`);
+          let detail: string | null = null;
+          try {
+            const body = await response.json();
+            if (body && typeof body === "object" && "detail" in body && typeof body.detail === "string") {
+              detail = body.detail;
+            }
+          } catch (parseError) {
+            // JSON-less responses happen when proxies emit HTML error pages. Logging aids prod triage.
+            if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
+              console.debug("Unable to parse action error response", parseError);
+            }
+          }
+          const fallback = `Failed to ${action} ${servicesToAffect.length > 1 ? "services" : "service"}.`;
+          throw new Error(detail ?? fallback);
         }
 
+        // We always refresh to reflect orchestrator state even if Compose finishes asynchronously.
         await refreshServices();
 
-        if (usedBulkSelection) {
-          setSelected({});
-        }
+        // On successful bulk actions we clear the full selection so the header checkbox resets.
+        setSelected((previous) => {
+          if (target) {
+            const next = { ...previous };
+            delete next[target];
+            return next;
+          }
+          return {};
+        });
       } catch (error) {
-        setActionError(extractErrorMessage(error));
+        const message = error instanceof Error ? error.message : "Unexpected error while running action.";
+        setActionError(message);
+        // Intentionally *not* clearing selections so operators can retry the same set immediately.
       } finally {
         setBusyAction(null);
       }
     },
-    [refreshServices, selectedNames]
+    [refreshServices, servicesForAction]
   );
-
-  const renderStatus = (service: ServiceRow): string => {
-    if (!service.status) {
-      return "Unknown";
-    }
-    return service.status;
-  };
-
-  const isBulkActionDisabled = busyAction !== null || selectedCount === 0;
 
   return (
     <div className="services-dashboard">
-      <header className="services-dashboard__header">
+      <header>
         <h1>Services</h1>
-        <button onClick={() => void refreshServices()} disabled={loading}>
-          Refresh
-        </button>
+        <p className="services-dashboard__hint">
+          Manage docker-compose orchestrated services. Use the header checkbox for bulk targeting.
+        </p>
       </header>
 
-      {loadError && <div className="error">{loadError}</div>}
+      {loadError ? (
+        <div role="alert" className="services-dashboard__error">
+          {loadError}
+        </div>
+      ) : null}
 
-      <section className="services-dashboard__actions">
-        <div className="actions-group">
-          <button onClick={() => void runAction("start")} disabled={isBulkActionDisabled}>
-            Start Selected
-          </button>
-          <button onClick={() => void runAction("stop")} disabled={isBulkActionDisabled}>
-            Stop Selected
-          </button>
-          <button onClick={() => void runAction("restart")} disabled={isBulkActionDisabled}>
-            Restart Selected
-          </button>
+      {actionError ? (
+        <div role="alert" className="services-dashboard__error">
+          {actionError}
         </div>
-        <div className="selection-summary" aria-live="polite">
-          {selectedCount === 0
-            ? "No services selected"
-            : `${selectedCount} service${selectedCount > 1 ? "s" : ""} selected`}
-        </div>
+      ) : null}
+
+      <section className="services-dashboard__actions" aria-live="polite">
+        <button type="button" onClick={() => void runAction("start")} disabled={busyAction !== null || selectedCount === 0}>
+          Start Selected
+        </button>
+        <button type="button" onClick={() => void runAction("stop")} disabled={busyAction !== null || selectedCount === 0}>
+          Stop Selected
+        </button>
+        <button type="button" onClick={() => void runAction("restart")} disabled={busyAction !== null || selectedCount === 0}>
+          Restart Selected
+        </button>
+        <span className="services-dashboard__selection" aria-live="polite">
+          {selectedCount} selected
+        </span>
       </section>
-
-      {actionError && <div className="error">{actionError}</div>}
 
       <table className="services-dashboard__table">
         <thead>
           <tr>
-            <th>
+            <th scope="col">
               <input
                 ref={headerCheckboxRef}
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleAll}
-                aria-checked={headerAriaChecked}
-                aria-label="Select all services"
+                aria-checked={isIndeterminate ? "mixed" : allSelected ? "true" : "false"}
+                aria-label={allSelected ? "Deselect all services" : "Select all services"}
               />
             </th>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Project</th>
-            <th>Last Change</th>
-            <th>Actions</th>
+            <th scope="col">Service</th>
+            <th scope="col">Status</th>
+            <th scope="col">Last state change</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {services.map((service) => {
-            const isChecked = Boolean(selected[service.name]);
-            return (
-              <tr key={service.name}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleSelection(service.name)}
-                    aria-label={`Select service ${service.name}`}
-                  />
-                </td>
-                <td>{service.name}</td>
-                <td>{renderStatus(service)}</td>
-                <td>{service.compose_project ?? "-"}</td>
-                <td>{service.last_state_change ?? "-"}</td>
-                <td>
-                  <button onClick={() => void runAction("start", [service.name])} disabled={busyAction !== null}>
-                    Start
-                  </button>
-                  <button onClick={() => void runAction("stop", [service.name])} disabled={busyAction !== null}>
-                    Stop
-                  </button>
-                  <button
-                    onClick={() => void runAction("restart", [service.name])}
-                    disabled={busyAction !== null}
-                  >
-                    Restart
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-          {services.length === 0 && !loading && (
+          {loading ? (
             <tr>
-              <td colSpan={6}>No services discovered.</td>
+              <td colSpan={5}>Loading services…</td>
             </tr>
+          ) : services.length === 0 ? (
+            <tr>
+              <td colSpan={5}>No services discovered.</td>
+            </tr>
+          ) : (
+            services.map((service) => {
+              const isChecked = Boolean(selected[service.name]);
+              return (
+                <tr key={service.name}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      name={service.name}
+                      checked={isChecked}
+                      onChange={toggleService}
+                      aria-label={`Select ${service.name}`}
+                    />
+                  </td>
+                  <td>
+                    <strong>{service.name}</strong>
+                    {service.compose_project ? (
+                      <div className="services-dashboard__meta">{service.compose_project}</div>
+                    ) : null}
+                  </td>
+                  <td>{service.status}</td>
+                  <td>{service.last_state_change ?? "—"}</td>
+                  <td>
+                    <div className="services-dashboard__row-actions">
+                      <button
+                        type="button"
+                        onClick={() => void runAction("start", service.name)}
+                        disabled={busyAction !== null}
+                      >
+                        Start
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runAction("stop", service.name)}
+                        disabled={busyAction !== null}
+                      >
+                        Stop
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runAction("restart", service.name)}
+                        disabled={busyAction !== null}
+                      >
+                        Restart
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
