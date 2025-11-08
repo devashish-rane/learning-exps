@@ -3,6 +3,9 @@ name: Build & Push core-spring-service to ECR
 on:
   workflow_dispatch
 
+env:
+  WORKING_DIRECTORY: core-spring-service
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -17,10 +20,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
-          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/core-spring-service/pom.xml
+          cache-dependency-path: ${{ env.WORKING_DIRECTORY }}/pom.xml
 
       - name: Build Spring Boot JAR
-        working-directory: ./core-spring-service
         run: ./mvnw clean package -DskipTests
 
       - name: Build Docker image
