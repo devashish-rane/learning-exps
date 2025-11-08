@@ -29,7 +29,7 @@ jobs:
         run: ./mvnw clean package -DskipTests
 
       - name: Build Docker image
-        run: docker build -t core-spring-service ./core-spring-service
+        run: docker build -t core-spring-service .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
