@@ -18,7 +18,7 @@ tracking_compose/
 │       ├── api/                  # REST handlers grouped by domain (services, health, telemetry, traces)
 │       ├── services/             # Business logic for Compose, health polling, metrics, tracing
 │       └── utils/                # Logging + diagnostic helpers for rich error surfacing
-└── frontend/ (planned)           # React SPA that consumes the backend APIs (to be scaffolded next)
+└── frontend/                     # React SPA that consumes the backend APIs
 ```
 
 ### Backend (FastAPI)
@@ -32,11 +32,12 @@ docstrings for faster debugging.
 * **Resilience** – defensive diagnostics when Docker/Compose binaries are missing; background tasks isolated to avoid
   request latency spikes.
 
-### Frontend (React) – Next Iteration
+### Frontend (React + Vite)
 
-The frontend will be scaffolded as a Vite-powered React SPA that authenticates against the backend, renders the
-control panel, live dashboards, and tracing visualizations. The backend already exposes CORS-friendly defaults for a
-local dev server running on `localhost:5173`.
+The React application lives under `tracking_compose/frontend` and is built with Vite. It ships four focused views that
+exercise the FastAPI surface: Compose service management, health snapshots, HTTP percentile tables, and trace/log
+correlation. All requests flow through a shared fetch helper that attaches an `X-Dockhand-Correlation-Id` header so we
+can line up UI actions with backend logs when debugging incidents.
 
 ## Why React + Python is Optimal Here
 
@@ -56,7 +57,24 @@ local dev server running on `localhost:5173`.
 3. Install dependencies: `pip install -e .[dev]`
 4. Launch the daemon: `uvicorn tracking_compose_backend.main:app --reload --port 4100`
 
-The React frontend will follow with a Vite-based dev server listening on `5173`.
+### Frontend Workflow
+
+1. `cd tracking_compose/frontend`
+2. Install dependencies once: `npm install`
+3. Start the dev server (proxied to the FastAPI backend): `npm run dev`
+   * By default, the SPA proxies `/api` calls to `http://localhost:4100`. Override this by exporting
+     `VITE_API_BASE_URL` before running dev/build commands if your backend is hosted elsewhere—use host-only values
+     (e.g. `https://dockhand.example.com`) so the client can append the `/api/*` paths without duplication.
+4. Run type-checks: `npm run lint`
+
+### Production Build Notes
+
+* `npm run build` creates a static bundle in `frontend/dist` and respects `VITE_API_BASE_URL`. When serving the SPA and
+  API from the same origin, leave the variable unset so requests resolve against `/api` relative to the host.
+* `npm run preview` runs a production-like server on port `4173` to validate the bundle before pushing to staging.
+* Because the fetch layer always sends an `X-Dockhand-Correlation-Id` header, ensure reverse proxies forward custom
+  headers; otherwise backend diagnostics lose that linkage. Nginx/Traefik pass it through by default, but managed CDNs
+  sometimes require an explicit allow list.
 
 ## Production Considerations
 
