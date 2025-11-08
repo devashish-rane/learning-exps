@@ -1,0 +1,7 @@
+{
+  "app": "mvn -q -e exec:java -Dexec.mainClass=com.branedev.infra.CoreServiceApp",
+  "context": {
+    "@aws-cdk/core:newStyleStackSynthesis": true,
+    "@aws-cdk/aws-ecs-patterns:removeDefaultDesiredCount": true
+  }
+}

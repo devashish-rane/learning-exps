@@ -1,0 +1,155 @@
+# Regression→Prod pipeline blueprint (GitHub Actions style)
+# Usage: copy into .github/workflows and replace placeholders in ALL_CAPS.
+
+name: regression-to-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      serviceTag:
+        description: "Image tag (e.g., dev-ab12cde)"
+        required: true
+      awsAccount:
+        description: "AWS account ID"
+        required: true
+      awsRegion:
+        description: "AWS region"
+        required: true
+
+env:
+  APP_NAME: core-spring-service
+  AWS_REGION: ${{ github.event.inputs.awsRegion }}
+  AWS_ACCOUNT: ${{ github.event.inputs.awsAccount }}
+  SERVICE_TAG: ${{ github.event.inputs.serviceTag }}
+  ECR_REPO: ${{ github.event.inputs.awsAccount }}.dkr.ecr.${{ github.event.inputs.awsRegion }}.amazonaws.com/core-spring-service
+  CDK_STACK_REGRESSION: RegressionStack-${{ github.event.inputs.serviceTag }}
+  CDK_STACK_PROD: ProdStack
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build Spring Boot jar
+        run: |
+          cd core-spring-service
+          ./mvnw -B -DskipTests package
+
+      - name: Build Docker image
+        run: |
+          docker build -t $APP_NAME:$SERVICE_TAG core-spring-service
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/GitHubDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login --username AWS --password-stdin $ECR_REPO
+
+      - name: Push image
+        run: |
+          docker tag $APP_NAME:$SERVICE_TAG $ECR_REPO:$SERVICE_TAG
+          docker push $ECR_REPO:$SERVICE_TAG
+
+  regression-deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      CDK_DEFAULT_ACCOUNT: ${{ env.AWS_ACCOUNT }}
+      CDK_DEFAULT_REGION: ${{ env.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/GitHubDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install CDK deps
+        run: |
+          cd infra/cdk
+          npm install
+
+      - name: CDK synth
+        run: |
+          cd infra/cdk
+          npx cdk synth
+
+      - name: Deploy regression stack
+        run: |
+          cd infra/cdk
+          ECR_IMAGE_URI=$ECR_REPO:$SERVICE_TAG \
+          npx cdk deploy $CDK_STACK_REGRESSION --require-approval never
+
+  regression-test:
+    needs: regression-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/GitHubDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Discover ALB endpoint
+        id: alb
+        run: |
+          STACK_NAME=$CDK_STACK_REGRESSION
+          DNS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME \
+            --query "Stacks[0].Outputs[?OutputKey=='AlbDnsName'].OutputValue" --output text)
+          echo "alb_dns=$DNS" >> $GITHUB_OUTPUT
+
+      - name: Smoke tests
+        run: |
+          BASE_URL=http://${{ steps.alb.outputs.alb_dns }}
+          curl -f $BASE_URL/actuator/health
+          ./scripts/smoke.sh $BASE_URL
+
+      - name: Collect metrics
+        run: |
+          aws cloudwatch get-metric-statistics --namespace core-spring-service \
+            --metric-name cw.heartbeat --start-time $(date -u -d '10 minutes ago' +%FT%TZ) \
+            --end-time $(date -u +%FT%TZ) --period 60 --statistics Average
+
+  promote-prod:
+    if: ${{ success() }}
+    needs: regression-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tag image as prod
+        run: |
+          docker pull $ECR_REPO:$SERVICE_TAG
+          docker tag $ECR_REPO:$SERVICE_TAG $ECR_REPO:prod-$SERVICE_TAG
+          docker push $ECR_REPO:prod-$SERVICE_TAG
+
+      - name: Deploy prod stack
+        run: |
+          cd infra/cdk
+          ECR_IMAGE_URI=$ECR_REPO:prod-$SERVICE_TAG \
+          npx cdk deploy $CDK_STACK_PROD --require-approval never
+
+  teardown-regression:
+    if: ${{ always() }}
+    needs: [promote-prod]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy regression stack
+        run: |
+          cd infra/cdk
+          npx cdk destroy $CDK_STACK_REGRESSION --force
