@@ -296,6 +296,7 @@ async def home():
         services=parse_services_from_compose(),
         compose_files=find_compose_files(),
         git_root=str(git_root()),
+        static_version=str(int(time.time())),
     )
     return HTMLResponse(content=html)
 
@@ -303,7 +304,7 @@ async def home():
 @app.get("/tracking", response_class=HTMLResponse)
 async def tracking():
     template = TEMPLATES.get_template("tracking.html")
-    html = template.render(git_root=str(git_root()))
+    html = template.render(git_root=str(git_root()), static_version=str(int(time.time())))
     return HTMLResponse(content=html)
 
 

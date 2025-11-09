@@ -466,6 +466,8 @@ button:hover {
 .combined-ts {
   color: #64748b;
   margin-right: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
 .combined-svc {
@@ -519,3 +521,18 @@ button:hover {
 .combined-text .tok-respond { color: #2563eb; font-weight: 600; }
 .combined-text .tok-http { color: #0ea5e9; }
 .combined-text .tok-trace { color: #334155; font-weight: 600; }
+
+/* Pretty JSON block inside combined logs */
+.json-block {
+  display: block;
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

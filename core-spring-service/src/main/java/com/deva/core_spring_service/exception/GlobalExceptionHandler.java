@@ -52,7 +52,10 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiError> build(HttpServletRequest req, HttpStatus status, String msg, List<FieldErr> details) {
-        String traceId = MDC.get("correlationId");
+        String traceId = MDC.get("traceId");
+        if (traceId == null || traceId.isBlank()) {
+            traceId = MDC.get("correlationId");
+        }
         ApiError body = new ApiError(
                 Instant.now(), traceId, status.value(), status.getReasonPhrase(), msg, details, req.getRequestURI());
         return ResponseEntity.status(status).body(body);

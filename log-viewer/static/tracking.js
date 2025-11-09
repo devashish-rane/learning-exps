@@ -61,12 +61,14 @@ async function renderCombinedLogs(traceId, container) {
     if (!res.ok) throw new Error(`Request failed: ${res.status}`);
     const data = await res.json();
     const lines = (data.lines || []).map((e) => {
-      const ts = e.ts ? new Date(e.ts).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '';
+      const ts = e.ts ? formatFullTs(e.ts) : '';
       const levelClass = deriveLevelClass(e.line || '');
       const statusClass = deriveStatusClass(e.line || '');
       const svcStyle = `style="color:${serviceColor(e.service || '')}"`;
-      const pretty = highlightText(stripAnsi(e.line || ''));
-      return `<div class="combined-line ${levelClass} ${statusClass}"><small class="combined-ts">${escapeHtml(ts)}</small> <span class="combined-svc" ${svcStyle}>[${escapeHtml(e.service || '')}]</span> <span class="combined-text">${pretty}</span></div>`;
+      const stripped = stripAnsi(e.line || '');
+      const jsonBlock = formatMaybeJson(stripped);
+      const content = jsonBlock || `<span class="combined-text">${highlightText(stripped)}</span>`;
+      return `<div class="combined-line ${levelClass} ${statusClass}"><small class="combined-ts">${escapeHtml(ts)}</small> <span class="combined-svc" ${svcStyle}>[${escapeHtml(e.service || '')}]</span> ${content}</div>`;
     }).join('');
     container.innerHTML = lines || '<p class="trace-status">No matching log lines found.</p>';
   } catch (err) {
@@ -135,23 +137,80 @@ function stripAnsi(str) {
   }
 }
 
+function formatFullTs(value) {
+  try {
+    // Prefer ISO 8601 in UTC for a full timestamp
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    return String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function tryParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function formatMaybeJson(text) {
+  const raw = (text || '').trim();
+  // Case 1: Whole line is JSON
+  if (raw.startsWith('{') || raw.startsWith('[')) {
+    const obj = tryParseJson(raw);
+    if (!obj) return null;
+    if (obj && typeof obj === 'object' && typeof obj.message === 'string') {
+      const nested = tryParseJson(obj.message);
+      if (nested) obj.message = nested;
+    }
+    const pretty = JSON.stringify(obj, null, 2);
+    return `<pre class=\"json-block\">${escapeHtml(pretty)}</pre>`;
+  }
+  // Case 2: Trailing JSON payload in the line (find first '{' and last '}' and try to parse substring)
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    const head = raw.slice(0, first).trimEnd();
+    const body = raw.slice(first, last + 1);
+    const obj = tryParseJson(body);
+    if (obj) {
+      const pretty = JSON.stringify(obj, null, 2);
+      const headHtml = head ? `<span class=\"combined-text\">${highlightText(head)}</span>` : '';
+      return `${headHtml}${head ? '<br>' : ''}<pre class=\"json-block\">${escapeHtml(pretty)}</pre>`;
+    }
+  }
+  return null;
+}
+
 function buildFlowFromTrace(trace) {
   try {
-    const timelines = (trace.entries || []).map((e) => e.timeline).filter(Boolean);
-    if (!timelines.length) return '';
-    // Prefer the earliest service's timeline
-    const tl = String(timelines[0]);
-    const parts = tl
-      .replace(/^\s*\[|\]\s*$/g, '') // strip surrounding brackets
-      .split('->')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .filter((s) => !/^TRACE\b/i.test(s))
-      .filter((s) => !/^\d{4}-\d{2}-\d{2}T/i.test(s));
-    if (!parts.length) return '';
+    const entries = Array.isArray(trace.entries) ? trace.entries : [];
+    if (!entries.length) return '';
+    const seen = new Set();
+    const orderedParts = [];
+    entries.forEach((e) => {
+      if (!e || !e.timeline) return;
+      const tl = String(e.timeline);
+      const parts = tl
+        .replace(/^\s*\[|\]\s*$/g, '')
+        .split('->')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .filter((s) => !/^TRACE\b/i.test(s))
+        .filter((s) => !/^\d{4}-\d{2}-\d{2}T/i.test(s));
+      parts.forEach((p) => {
+        if (!seen.has(p)) {
+          seen.add(p);
+          orderedParts.push(p);
+        }
+      });
+    });
+    if (!orderedParts.length) return '';
     const chips = [];
-    parts.forEach((p, i) => {
-      // Split optional 'service: Step'
+    orderedParts.forEach((p, i) => {
       let svc = '';
       let body = p;
       const colon = p.indexOf(':');
@@ -161,7 +220,7 @@ function buildFlowFromTrace(trace) {
       }
       const style = svc ? ` style=\"border-color:${serviceColor(svc)};color:${serviceColor(svc)}\"` : '';
       chips.push(`<span class=\"flow-chip\"${style}>${svc ? `<span class=\"svc\">${escapeHtml(svc)}</span>` : ''}${escapeHtml(body)}</span>`);
-      if (i < parts.length - 1) chips.push('<span class="flow-arrow">→</span>');
+      if (i < orderedParts.length - 1) chips.push('<span class="flow-arrow">→</span>');
     });
     return chips.join('');
   } catch {

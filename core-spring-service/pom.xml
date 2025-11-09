@@ -29,7 +29,7 @@
 	<properties>
 		<java.version>17</java.version>
 	</properties>
-	<dependencies>
+    <dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter</artifactId>
@@ -82,6 +82,18 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- Micrometer Tracing (Brave bridge) to auto-manage trace/span + MDC -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-brave</artifactId>
+        </dependency>
+        <!-- Optional: Zipkin sender (no exporter configured by default) -->
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Core Testcontainers engine -->

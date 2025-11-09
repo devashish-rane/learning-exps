@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Request Tracking</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v={{ static_version | default('dev') }}">
 </head>
 <body class="tracking-page">
 <header>
@@ -24,6 +24,6 @@
     </section>
 </main>
 
-<script src="/static/tracking.js"></script>
+<script src="/static/tracking.js?v={{ static_version | default('dev') }}"></script>
 </body>
 </html>

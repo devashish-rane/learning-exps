@@ -12,6 +12,8 @@ Three local services mimic a simple UI → Core API → Producer flow so we can 
 
 All services are wired together via Docker Compose on the `app-net` network and communicate via service names (e.g., `http://producer-service:8082`).
 
+## PICS : 
+![alt text](<Screenshot 2025-11-09 at 4.52.37 PM.png>)
 ## Prerequisites
 
 - Docker + Docker Compose

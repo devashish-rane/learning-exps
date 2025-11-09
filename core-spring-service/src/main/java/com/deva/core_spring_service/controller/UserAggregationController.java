@@ -6,7 +6,7 @@ import com.deva.core_spring_service.model.UserProfile;
 import com.deva.core_spring_service.model.UserStatus;
 import com.deva.core_spring_service.service.ProducerClient;
 import com.deva.core_spring_service.service.UserDirectory;
-import com.deva.core_spring_service.util.CorrelationIdHolder;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,12 +31,16 @@ public class UserAggregationController {
                 .orElseThrow(() -> new NotFoundException("User %s not found".formatted(id)));
 
         UserStatus status = producerClient.fetchStatus(profile.id());
+        String idFromMdc = MDC.get("traceId");
+        if (idFromMdc == null || idFromMdc.isBlank()) {
+            idFromMdc = MDC.get("correlationId");
+        }
         UserAggregateResponse response = new UserAggregateResponse(
                 profile.id(),
                 profile.name(),
                 profile.email(),
                 status.loggedIn(),
-                CorrelationIdHolder.get().orElse(null)
+                idFromMdc
         );
         return ResponseEntity.ok(response);
     }

@@ -1,8 +1,6 @@
 package com.deva.core_spring_service.service;
 
-import com.deva.core_spring_service.config.CorrelationIdFilter;
 import com.deva.core_spring_service.config.ProducerProperties;
-import com.deva.core_spring_service.util.CorrelationIdHolder;
 import com.deva.core_spring_service.model.UserStatus;
 import com.deva.core_spring_service.exception.ProducerUnavailableException;
 import org.springframework.http.MediaType;
@@ -52,8 +50,6 @@ public class ProducerClient {
                         .queryParam("userId", userId)
                         .build())
                 .accept(MediaType.APPLICATION_JSON)
-                .headers(headers -> CorrelationIdHolder.get()
-                        .ifPresent(id -> headers.add(CorrelationIdFilter.HEADER_NAME, id)))
                 .retrieve()
                 .bodyToMono(UserStatus.class);
     }
