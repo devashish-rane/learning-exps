@@ -31,6 +31,26 @@ header {
   gap: 0.75rem;
 }
 
+header .actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.ghost-btn {
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #fff;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.8rem;
+  transition: background 0.2s ease;
+}
+
+.ghost-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 header code {
   background: rgba(255, 255, 255, 0.2);
   padding: 0.2rem 0.4rem;
@@ -336,3 +356,166 @@ button:hover {
     height: calc(100vh - 220px - 110px);
   }
 }
+.tracking-page {
+  overflow: auto;
+}
+
+.tracking-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.tracking-layout section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.sample-block {
+  background: #0f172a;
+  color: #d1fae5;
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trace-card {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.trace-card header { display: none; }
+
+.trace-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.trace-entry {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: #f8fafc;
+}
+
+.trace-entry div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trace-entry small {
+  color: #64748b;
+}
+
+.trace-entry p {
+  margin: 0.35rem 0 0;
+  color: #0f172a;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.trace-status {
+  color: #475569;
+}
+
+.trace-status.error {
+  color: #b91c1c;
+}
+
+/* Combined logs on tracking page */
+.combined-actions {
+  margin-top: 0.5rem;
+}
+
+.combined-logs {
+  margin: 0 0 1rem 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem;
+  background: #fff;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.combined-line {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.combined-ts {
+  color: #64748b;
+  margin-right: 0.5rem;
+}
+
+.combined-svc {
+  color: #0ea5e9;
+  margin-right: 0.5rem;
+}
+
+/* Flow bar chips */
+.flow-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.flow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-size: 0.75rem;
+}
+
+.flow-chip .svc {
+  font-weight: 600;
+}
+
+.flow-arrow {
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+/* Combined log highlighting */
+.combined-line.lvl-info { }
+.combined-line.lvl-warn { background: rgba(251, 191, 36, 0.08); }
+.combined-line.lvl-error { background: rgba(239, 68, 68, 0.08); }
+
+.combined-line.http-ok { border-left: 3px solid #10b981; padding-left: 0.45rem; }
+.combined-line.http-warn { border-left: 3px solid #f59e0b; padding-left: 0.45rem; }
+.combined-line.http-error { border-left: 3px solid #ef4444; padding-left: 0.45rem; }
+
+.combined-text .tok-method { color: #7c3aed; font-weight: 600; }
+.combined-text .tok-path { color: #0369a1; }
+.combined-text .tok-status { font-weight: 700; }
+.combined-text .tok-duration { color: #065f46; }
+.combined-text .tok-arrow { color: #64748b; font-weight: 700; }
+.combined-text .tok-respond { color: #2563eb; font-weight: 600; }
+.combined-text .tok-http { color: #0ea5e9; }
+.combined-text .tok-trace { color: #334155; font-weight: 600; }

@@ -292,9 +292,6 @@ async function fetchLogs(id, silent = false) {
     }));
     trimLogLines();
     renderLogLines();
-    if (!logLines.length) {
-      logOutputEl.textContent = '(No logs)';
-    }
     currentSinceHint = Math.max(0, Math.floor(Date.now() / 1000) - 1);
     return true;
   } catch (err) {

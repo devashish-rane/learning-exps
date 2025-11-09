@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Request Tracking</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="tracking-page">
+<header>
+    <div>
+        <h1>Request Tracking</h1>
+        <p>Git root: <code>{{ git_root }}</code></p>
+    </div>
+    <div class="actions">
+        <button id="traces-refresh">Refresh</button>
+        <a class="ghost-btn" href="/">Back to Logs</a>
+    </div>
+</header>
+
+<main class="tracking-layout">
+    <section>
+        <h3>Recent requests</h3>
+        <div id="trace-list" class="trace-list"></div>
+    </section>
+</main>
+
+<script src="/static/tracking.js"></script>
+</body>
+</html>

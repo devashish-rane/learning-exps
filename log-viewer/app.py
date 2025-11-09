@@ -1,5 +1,7 @@
 import json
 import subprocess
+import time
+from collections import defaultdict
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -129,6 +131,162 @@ def docker_client():
         return docker.from_env()
     except DockerException as exc:
         raise HTTPException(status_code=500, detail=f"Docker error: {exc}") from exc
+ 
+
+def parse_trace_line(line: str) -> Optional[dict]:
+    if "TRACE_SUMMARY" not in line:
+        return None
+    try:
+        outer = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    summary = outer
+    if summary.get("event") != "TRACE_SUMMARY":
+        message = outer.get("message")
+        if isinstance(message, str):
+            try:
+                summary = json.loads(message)
+            except json.JSONDecodeError:
+                return None
+    if summary.get("event") != "TRACE_SUMMARY":
+        return None
+    trace_id = summary.get("traceId")
+    if not trace_id:
+        return None
+    timestamp = summary.get("ts") or outer.get("@timestamp") or datetime.utcnow().isoformat() + "Z"
+    epoch = _ts_to_epoch(timestamp)
+    return {
+        "traceId": trace_id,
+        "service": summary.get("service") or outer.get("service"),
+        "requestName": summary.get("requestName"),
+        "timeline": summary.get("timeline"),
+        "ts": timestamp,
+        "tsEpoch": epoch,
+    }
+
+
+def _ts_to_epoch(value: str) -> float:
+    try:
+        sanitized = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(sanitized).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _parse_line_timestamp(line: str) -> Optional[str]:
+    """Try to extract an ISO timestamp from a docker log line.
+
+    When docker logs are requested with timestamps=True, each line is prefixed
+    with an RFC3339 timestamp, e.g. '2025-11-09T07:16:28.123456789Z ...'.
+    Fallback to JSON '@timestamp' or 'ts' fields if present.
+    """
+    # Attempt docker-provided prefix (up to first space)
+    try:
+        if " " in line and line[0].isdigit():
+            prefix, _rest = line.split(" ", 1)
+            # Basic validation
+            if "T" in prefix and (prefix.endswith("Z") or "+" in prefix):
+                # Normalize possible nano-precision by trimming to microseconds if needed
+                # Keep as-is; downstream will handle parsing
+                return prefix
+    except Exception:
+        pass
+    # Try to parse as JSON and pull timestamp-ish fields
+    try:
+        obj = json.loads(line)
+        for key in ("@timestamp", "ts", "timestamp"):
+            val = obj.get(key)
+            if isinstance(val, str) and val:
+                return val
+    except Exception:
+        # ignore non-JSON lines
+        return None
+    return None
+
+
+def collect_trace_logs(trace_id: str, tail: int = 800, since: Optional[int] = None) -> List[dict]:
+    """Collect and merge logs across all containers that contain trace_id.
+
+    Returns a list of entries: { ts, tsEpoch, service, container, line }
+    sorted by tsEpoch ascending.
+    """
+    client = docker_client()
+    containers = client.containers.list()
+    results: List[dict] = []
+    for container in containers:
+        service_label = container.labels.get("com.docker.compose.service", container.name)
+        try:
+            kwargs = {"tail": tail, "timestamps": True}
+            if since is not None:
+                kwargs["since"] = since
+            logs = container.logs(**kwargs)
+        except DockerException:
+            continue
+        if isinstance(logs, bytes):
+            logs = logs.decode("utf-8", errors="ignore")
+        for raw in logs.splitlines():
+            if not raw or trace_id not in raw:
+                continue
+            ts = _parse_line_timestamp(raw) or datetime.utcnow().isoformat() + "Z"
+            epoch = _ts_to_epoch(ts)
+            # If docker added a timestamp prefix, strip it from the line payload for readability
+            if raw and raw[0].isdigit() and " " in raw:
+                maybe_prefix, rest = raw.split(" ", 1)
+                if "T" in maybe_prefix and (maybe_prefix.endswith("Z") or "+" in maybe_prefix):
+                    raw = rest
+            results.append(
+                {
+                    "ts": ts,
+                    "tsEpoch": epoch,
+                    "service": service_label,
+                    "container": container.name,
+                    "line": raw,
+                }
+            )
+    results.sort(key=lambda e: e.get("tsEpoch", 0))
+    return results
+
+
+def collect_traces(limit: int = 20, tail: int = 400) -> List[dict]:
+    client = docker_client()
+    containers = client.containers.list()
+    grouped: Dict[str, List[dict]] = defaultdict(list)
+    for container in containers:
+        service_label = labels = container.labels.get("com.docker.compose.service", container.name)
+        try:
+            logs = container.logs(tail=tail)
+        except DockerException:
+            continue
+        if isinstance(logs, bytes):
+            logs = logs.decode("utf-8", errors="ignore")
+        for line in logs.splitlines():
+            entry = parse_trace_line(line)
+            if not entry:
+                continue
+            entry["service"] = service_label
+            grouped[entry["traceId"]].append(entry)
+    requests = []
+    for trace_id, entries in grouped.items():
+        entries.sort(key=lambda e: e.get("tsEpoch", 0))
+        request_name = next((e.get("requestName") for e in entries if e.get("requestName")), "Request")
+        requests.append(
+            {
+                "traceId": trace_id,
+                "requestName": request_name,
+                "firstTs": entries[0].get("ts"),
+                "firstEpoch": entries[0].get("tsEpoch", 0),
+                "entries": [
+                    {
+                        "service": e.get("service"),
+                        "timeline": e.get("timeline"),
+                        "ts": e.get("ts"),
+                    }
+                    for e in entries
+                ],
+            }
+        )
+    requests.sort(key=lambda r: r.get("firstEpoch", 0), reverse=True)
+    return requests[:limit]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -140,6 +298,26 @@ async def home():
         git_root=str(git_root()),
     )
     return HTMLResponse(content=html)
+
+
+@app.get("/tracking", response_class=HTMLResponse)
+async def tracking():
+    template = TEMPLATES.get_template("tracking.html")
+    html = template.render(git_root=str(git_root()))
+    return HTMLResponse(content=html)
+
+
+@app.get("/api/traces")
+async def traces(limit: int = Query(20, ge=1, le=200), tail: int = Query(400, ge=50, le=2000)):
+    return {"requests": collect_traces(limit=limit, tail=tail)}
+
+
+@app.get("/api/traces/{trace_id}/logs")
+async def trace_logs(trace_id: str, tail: int = Query(800, ge=50, le=5000), since: Optional[int] = Query(None, ge=0)):
+    if not trace_id or len(trace_id) < 6:
+        raise HTTPException(status_code=400, detail="Invalid trace id")
+    lines = collect_trace_logs(trace_id=trace_id, tail=tail, since=since)
+    return {"traceId": trace_id, "count": len(lines), "lines": lines}
 
 
 @app.get("/api/services")
@@ -310,7 +488,7 @@ async def container_logs(
         }
         for line in logs.splitlines()
     ]
-    return JSONResponse({"container": container.name, "lines": lines})
+    return JSONResponse({"container": container.name, "lines": lines, "logs": logs})
 
 
 @app.get("/api/logs/{container_id}/stream")
